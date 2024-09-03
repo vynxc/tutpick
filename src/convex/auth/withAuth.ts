@@ -20,7 +20,7 @@ export function queryWithAuth<ArgsValidator extends PropertyValidators, Output>(
 	return query({
 		args: {
 			...args,
-			sessionId: v.union(v.null(), v.string())
+			sessionId: v.optional(v.string())
 		},
 		handler: async (ctx, args: any) => {
 			const auth = getAuth(ctx.db as DatabaseWriter);
@@ -38,7 +38,7 @@ export function internalQueryWithAuth<ArgsValidator extends PropertyValidators, 
 	handler
 }: QueryWithAuth<ArgsValidator, Output>) {
 	return internalQuery({
-		args: { ...args, sessionId: v.union(v.null(), v.string()) },
+		args: { ...args, sessionId: v.optional(v.string()) },
 		handler: async (ctx, args: any) => {
 			const auth = getAuth(ctx.db as DatabaseWriter);
 			const userSessionContext = await getValidExistingSession(auth, args.sessionId);
@@ -55,7 +55,7 @@ export function mutationWithAuth<ArgsValidator extends PropertyValidators, Outpu
 	handler
 }: MutationWithAuth<ArgsValidator, Output>) {
 	return mutation({
-		args: { ...args, sessionId: v.union(v.null(), v.string()) },
+		args: { ...args, sessionId: v.optional(v.string()) },
 		handler: async (ctx, args: any) => {
 			const auth = getAuth(ctx.db);
 			const userSessionContext = await getValidExistingSession(auth, args.sessionId);
@@ -72,7 +72,7 @@ export function internalMutationWithAuth<ArgsValidator extends PropertyValidator
 	handler
 }: MutationWithAuth<ArgsValidator, Output>) {
 	return internalMutation({
-		args: { ...args, sessionId: v.union(v.null(), v.string()) },
+		args: { ...args, sessionId: v.optional(v.string()) },
 		handler: async (ctx, args: any) => {
 			const auth = getAuth(ctx.db);
 			const userSessionContext = await getValidExistingSession(auth, args.sessionId);

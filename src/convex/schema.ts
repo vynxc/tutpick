@@ -2,7 +2,6 @@ import { v } from 'convex/values';
 import { defineEnt, defineEntSchema, getEntDefinitions } from 'convex-ents';
 
 const users = defineEnt({
-	id: v.string(),
 	email: v.string(),
 	name: v.optional(v.string()),
 	username: v.optional(v.string()),
@@ -12,20 +11,19 @@ const users = defineEnt({
 	referralSiteUrl: v.optional(v.string()),
 	isIncognitoMode: v.optional(v.string())
 })
-	.index('byId', ['id'])
 	.index('byEmail', ['email'])
 	.index('byUsername', ['username']);
 
 const sessions = defineEnt({
 	id: v.string(),
-	user_id: v.string(),
+	user_id: v.id('users'),
 	expires_at: v.float64()
 })
 	.index('byId', ['id'])
 	.index('byUserId', ['user_id']);
 
 const accounts = defineEnt({
-	user_id: v.string(),
+	user_id: v.id('users'),
 	provider: v.string()
 })
 	.index('byUserId', ['user_id'])
@@ -35,7 +33,9 @@ const tokens = defineEnt({
 	email: v.string(),
 	token: v.string(),
 	expires_at: v.float64()
-}).index('byEmail', ['email']);
+})
+	.index('byEmail', ['email'])
+	.index('byToken', ['token']);
 
 const schema = defineEntSchema({
 	users,

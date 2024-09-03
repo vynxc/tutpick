@@ -12,3 +12,5 @@ vite.config.ts.timestamp-*
 .vercel
 
 /src/convex/_generated
+
+.env.local

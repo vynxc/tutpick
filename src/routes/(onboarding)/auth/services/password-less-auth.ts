@@ -1,4 +1,5 @@
 import { error, type RequestEvent } from '@sveltejs/kit';
+import type { Session, User } from 'lucia';
 
 import { api } from '$convex/_generated/api';
 import { appHomeRoute } from '$lib/auth/routes';
@@ -16,32 +17,25 @@ export async function passwordLessAuthHandler(
 	userData: PasswordLessUserData,
 	provider: string = 'email'
 ) {
+	const token = event.params.token;
+	if (!token) return error(400, 'Login link is invalid');
 	const { email, name, username, avatar } = userData;
-
-	const { session, cookie } = await client.mutation(api.users.performPasswordLessLogin, {
+	const data = await client.mutation(api.users.performPasswordLessLogin, {
 		email,
 		provider,
 		name,
 		username,
 		avatar,
-		sessionId: null
+		token
 	});
 
-	console.log('session', session);
-	console.log('cookie', cookie);
+	const session = JSON.parse(data) as Session;
 
-	// set session
-	// await userService.setSession(event, existingUserId, {
-	// 	username: userData.username,
-	// 	providerId: userData.id,
-	// 	provider
-	// });
-
-	// redirect to home
-	// return new Response(null, {
-	// 	status: 302,
-	// 	headers: {
-	// 		Location: appHomeRoute
-	// 	}
-	// });
+	return new Response(null, {
+		status: 307,
+		headers: {
+			Location: appHomeRoute,
+			'Set-Cookie': `session=${session.id}; path=/; expires=${new Date(session.expiresAt).toUTCString()};`
+		}
+	});
 }

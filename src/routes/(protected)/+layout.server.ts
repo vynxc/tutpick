@@ -4,9 +4,8 @@ import { loginRoute } from '$lib/auth/routes';
 
 import type { LayoutServerLoad } from '../$types';
 
-export const load: LayoutServerLoad = async ({ locals: { safeGetSession } }) => {
-	const { session } = await safeGetSession();
-
+export const load: LayoutServerLoad = async ({ locals: { session, user } }) => {
+	console.log(`user ${user?.name} appeared.`, user);
 	if (!session) {
 		redirect(303, loginRoute);
 	}

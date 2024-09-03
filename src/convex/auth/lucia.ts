@@ -1,10 +1,12 @@
 import { type Adapter, type DatabaseSession, type DatabaseUser, Lucia } from 'lucia';
 
+import { Id } from '../_generated/dataModel';
 import type { DatabaseReader, DatabaseWriter } from '../_generated/server';
 
 declare module 'lucia' {
 	interface Register {
 		DatabaseUserAttributes: DatabaseUserAttributes;
+		UserId: Id<'users'>;
 	}
 }
 
@@ -18,8 +20,8 @@ interface DatabaseUserAttributes {
 	isIncognitoMode?: string;
 }
 
-export function getAuth(db: DatabaseWriter) {
-	const lucia = new Lucia(new ConvexAdapter(db), {
+export function getAuth(db: DatabaseWriter | DatabaseReader) {
+	const lucia = new Lucia(new ConvexAdapter(db as DatabaseWriter), {
 		getUserAttributes: (attributes) => {
 			return {
 				name: attributes.name,
@@ -39,16 +41,56 @@ export class ConvexAdapter implements Adapter {
 	constructor(private readonly db: DatabaseWriter) {}
 
 	async getSessionAndUser(
-		sessionId: string
+		sessionId: Id<'sessions'>
 	): Promise<[DatabaseSession | null, DatabaseUser | null]> {
-		const session = await getSession(this.db, sessionId);
+		const dbsession = await this.db
+			.query('sessions')
+			.withIndex('byId', (q) => q.eq('id', sessionId))
+			.first();
+
+		if (dbsession === null) return [null, null];
+
+		const session = {
+			id: dbsession.id,
+			userId: dbsession.user_id,
+			expiresAt: new Date(dbsession.expires_at),
+			attributes: {}
+		} as DatabaseSession;
+
 		if (session === null) return [null, null];
-		const user = await getUser(this.db, session.userId);
+		const dbuser = await this.db.get(session.userId);
+
+		if (dbuser === null) return [null, null];
+		const user = {
+			id: dbuser._id,
+			attributes: {
+				username: dbuser.username,
+				name: dbuser.name,
+				avatar: dbuser.avatar,
+				browserHash: dbuser.browserHash,
+				landingPage: dbuser.landingPage,
+				referralSiteUrl: dbuser.referralSiteUrl,
+				isIncognitoMode: dbuser.isIncognitoMode
+			}
+		} as DatabaseUser;
+
 		return [session, user];
 	}
 
-	getUserSessions(userId: string): Promise<DatabaseSession[]> {
-		return getSessions(this.db, userId);
+	async getUserSessions(userId: Id<'users'>): Promise<DatabaseSession[]> {
+		const sessions = await this.db
+			.query('sessions')
+			.withIndex('byUserId', (q) => q.eq('user_id', userId))
+			.collect();
+
+		console.log(`got a total of ${sessions.length} sessions`);
+
+		return sessions.map((session) => ({
+			id: session._id,
+			userId: session.user_id,
+			expiresAt: new Date(session.expires_at),
+			attributes: {}
+		}));
 	}
 
 	async setSession(session: DatabaseSession): Promise<void> {
@@ -62,7 +104,7 @@ export class ConvexAdapter implements Adapter {
 	async updateSessionExpiration(sessionId: string, expiresAt: Date): Promise<void> {
 		const session = await this.db
 			.query('sessions')
-			.filter((q) => q.eq(q.field('id'), sessionId))
+			.withIndex('byId', (q) => q.eq('id', sessionId))
 			.first();
 		if (session === null) return;
 		await this.db.patch(session._id, { expires_at: expiresAt.getTime() });
@@ -91,52 +133,4 @@ export class ConvexAdapter implements Adapter {
 		await Promise.all(expiredSessions.map((session) => this.db.delete(session._id)));
 	}
 }
-
-async function getSessions(db: DatabaseReader, userId: string): Promise<DatabaseSession[]> {
-	const sessions = await db
-		.query('sessions')
-		.filter((q) => q.eq(q.field('user_id'), userId))
-		.collect();
-	return sessions.map((session) => ({
-		id: session.id,
-		userId: session.user_id,
-		expiresAt: new Date(session.expires_at),
-		attributes: {}
-	}));
-}
-
-async function getSession(db: DatabaseReader, sessionId: string): Promise<DatabaseSession | null> {
-	const session = await db
-		.query('sessions')
-		.withIndex('byId', (q) => q.eq('id', sessionId))
-		.first();
-	if (session === null) return null;
-	return {
-		id: session.id,
-		userId: session.user_id,
-		expiresAt: new Date(session.expires_at),
-		attributes: {}
-	};
-}
-
-async function getUser(db: DatabaseReader, userId: string): Promise<DatabaseUser | null> {
-	const user = await db
-		.query('users')
-		.withIndex('byId', (q) => q.eq('id', userId))
-		.first();
-	if (user === null) return null;
-	return {
-		id: user.id,
-		attributes: {
-			name: user.name || undefined,
-			username: user.username || undefined,
-			avatar: user.avatar || undefined,
-			browserHash: user.browserHash || undefined,
-			landingPage: user.landingPage || undefined,
-			referralSiteUrl: user.referralSiteUrl || undefined,
-			isIncognitoMode: user.isIncognitoMode || undefined
-		}
-	};
-}
-
 export type Auth = ReturnType<typeof getAuth>;

@@ -8,12 +8,7 @@ import { mutationWithAuth, queryWithAuth } from './auth/withAuth';
 export const getSession = queryWithAuth({
 	args: {},
 	handler: async (ctx) => {
-		return {
-			session: JSON.stringify(ctx.userSessionContext),
-			cookie: ctx.userSessionContext?.session?.fresh
-				? ctx.auth.createSessionCookie(ctx.userSessionContext.session.id).serialize()
-				: undefined
-		};
+		return JSON.stringify(ctx.userSessionContext);
 	}
 });
 
@@ -55,13 +50,27 @@ export const sendEmailLoginLink = mutation({
 export const performPasswordLessLogin = mutationWithAuth({
 	args: {
 		email: v.string(),
+		token: v.string(),
 		provider: v.string(),
 		name: v.optional(v.string()),
 		username: v.optional(v.string()),
 		avatar: v.optional(v.string())
 	},
 	handler: async (ctx, args) => {
-		const userId = generateIdFromEntropySize(10);
+		// Validate email format
+		if (!args.email.includes('@')) {
+			throw new ConvexError('Invalid email format');
+		}
+
+		// Check if the token is valid and not expired
+		const tokenRecord = await ctx.db
+			.query('tokens')
+			.withIndex('byToken', (q) => q.eq('token', args.token))
+			.unique();
+
+		if (!tokenRecord || tokenRecord.expires_at < Date.now()) {
+			throw new ConvexError('Token is invalid or expired');
+		}
 
 		const existingUser = await ctx.db
 			.query('users')
@@ -69,35 +78,27 @@ export const performPasswordLessLogin = mutationWithAuth({
 			.unique();
 
 		if (!existingUser) {
-			await ctx.db.insert('users', {
-				id: userId,
-				email: args.email,
-				name: args.name,
-				username: args.username,
-				avatar: args.avatar
-			});
+			throw new ConvexError('User not found');
 		}
 
-		const session = await ctx.auth.createSession(userId, {
-			name: args.name,
-			username: args.username,
-			avatar: args.avatar
-		});
-
-		const cookie = ctx.auth.createSessionCookie(session.id).serialize();
+		const session = await ctx.auth.createSession(existingUser._id, {});
 
 		const existingAccount = await ctx.db
 			.query('accounts')
-			.withIndex('byProviderUser', (q) => q.eq('provider', args.provider).eq('user_id', userId))
+			.withIndex('byProviderUser', (q) =>
+				q.eq('provider', args.provider).eq('user_id', existingUser._id)
+			)
 			.unique();
 
 		if (!existingAccount) {
 			await ctx.db.insert('accounts', {
 				provider: args.provider,
-				user_id: userId
+				user_id: existingUser._id
 			});
 		}
 
-		return { session, cookie };
+		await ctx.db.delete(tokenRecord._id);
+
+		return JSON.stringify(session);
 	}
 });

@@ -1,8 +1,11 @@
 import type { Handle } from '@sveltejs/kit';
 import { redirect } from '@sveltejs/kit';
 import { sequence } from '@sveltejs/kit/hooks';
+import type { Session, User } from 'lucia';
 import { initAcceptLanguageHeaderDetector } from 'typesafe-i18n/detectors';
 
+import { api } from '$convex/_generated/api';
+import { client } from '$lib/convex';
 // import { protectRoutes } from '$lib/auth/middlewares';
 import { detectLocale } from '$lib/i18n/i18n-util.js';
 
@@ -24,4 +27,19 @@ async function i18n({ event, resolve }) {
 	});
 }
 
-export const handle = sequence(urlRewrite, i18n) satisfies Handle;
+export const auth: Handle = async ({ event, resolve }) => {
+	const sessionCookie = event.cookies.get('session');
+
+	if (!sessionCookie) return await resolve(event);
+
+	const sessionJson = await client.query(api.users.getSession, { sessionId: sessionCookie });
+
+	const session = JSON.parse(sessionJson) as { user: User | null; session: Session | null };
+
+	event.locals.user = session.user;
+	event.locals.session = session.session;
+
+	return await resolve(event);
+};
+
+export const handle = sequence(urlRewrite, i18n, auth) satisfies Handle;
